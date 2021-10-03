@@ -1,0 +1,4 @@
+ESERCITAZIONE 10
+Creazione di un nodo ros che preso un punto GOAL il robot vada in quel punto.
+Controllare le varie posizioni del robot, controllare se il robot si blocca o
+se ci mette troppo tempo e non arriva.

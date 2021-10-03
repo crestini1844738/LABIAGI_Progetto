@@ -1,0 +1,63 @@
+COME POTER REGISTRARE UNA NUOVA BAG PER GENERARE LA MAPPA
+(muovendo il robot su stage con joypad o tastiera)
+Esercitazione 10(da inizio a minuto 13)
+
+
+In primis:
+andare in:    /srrg2_webctl/proc_webctl
+e fare:       run_navigation.webctl
+Shell grafica su localhost:9001
+
+
+
+Package per comandare il robot da tastiera: installare il package ros teleop_twist_keyboard_cpp
+
+
+Avviare i vari componenti
+-roscore
+-stage
+-joy
+
+
+
+CREAZIONE DELLA BAG
+Dire cosa si vuole registrare. Mettersi in srrg2_navigation_2d/config (Terminale): rosbag record /odom /tf /base_scan
+
+Mandare il teleop per usare la tastiera(terminale): rosrun teleop_twist_keyboard_cpp teleop_twist_keyboard
+
+Mandare il robot in giro. Qaundo sono soddisfato del percorso torno sul terminale della rosbag e faccio ctrl+C
+Nella cartella della bag ho adesso una nuova bag nominata con data e ora(cambiare nome con bag_new.bag)
+
+
+
+
+CREAZIONE DELLA MAPPA
+Ora dobbiamo mandare il programma di slam sulla nuova bag.
+Per fare ciò sempre in config di navigation2d si deve:
+
+Inserire la bag nel file cappero_diag_slam_stage.conf
+-aprire il file capperostage(terminale): geany cappero_diag_slam_stage.conf &
+-cercare i file da leggere della bag (//file to read (riga 384)); all' interno di questa sezione ci sono le varie bag. 
+ Inserire la nostra nuova bag al posto dell'altra "filename" : "bag_new.bag"
+-salvare e chiudere
+
+
+Avviare la bag:
+rosrun srrg2_executor srrg2_shell -vt shared -c cappero_diag_slam_stage.conf
+add_canvas slam slam
+run runner
+
+
+Salvare la mappa:
+exec mapper saveMap new_map
+quit
+
+Esportare la mappa da dare al mapserver per visualizzarla su rviz
+rosrun srrg2_map_server map_server new_map.yaml
+
+Andare sull' interfaccia web:
+-attivare lrviz
+-in rviz fare Add, by topic, Map (per aggiungere la nostra mappa)
+-attivare il localizer
+
+Posso eventualmente aggiungere laserscan,odometry,poseArray
