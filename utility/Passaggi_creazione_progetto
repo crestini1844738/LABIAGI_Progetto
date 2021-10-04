@@ -3,3 +3,4 @@ Prima cosa: catkin build su /labiagi_2020_2021-master/workspace/srrg2_labiagi
 
 1) Inserito un package in /workspace/srrg2_labiagi/src chiamato pick_and_delivery.
    Creazione package, modifica CMakeList.txt e  package.xml
+2)inserimento nel package dei messaggi e dei servizi (.msg & .srv). Modifiche su CMakeList.txt e package.xml
