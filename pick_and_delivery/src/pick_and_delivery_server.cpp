@@ -1,0 +1,121 @@
+#include "ros/ros.h"
+#include "pick_and_delivery/UserLogin.h"
+
+
+#include <string>
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <iomanip>
+#include <cstring>  
+
+
+int num_users=4;
+struct user{
+	std::string username;
+	std::string password;
+	float x;
+	float y;
+	float theta;
+};
+
+std::vector<user> users;
+std::vector<user> usersLogIn;
+bool ReadUsers()
+{
+		//OSS: bisgona stare nella cartella src per eseguire il server altrimenti non vede il file degli utenti()
+		//DA SISTEMARE
+	 std::ifstream iFile("./utenti.txt");
+	 std::string line;
+	 char *ptr;
+	 user utente;
+	 getline(iFile,line);// elimino la prima riga che è l' intestazione
+	 for(int i=0;i<num_users*5;i++)
+	 {
+		
+		/*getline(iFile, line,' ');
+		utente.username=line;
+		getline(iFile, line,' ');
+		utente.password=line;
+	    getline(iFile,line,' ');
+	    utente.x=stof(line);
+	    getline(iFile,line,' ');
+	    utente.y=stof(line);
+	    getline(iFile,line,' ');
+	    utente.theta=stof(line);
+		ROS_INFO("%s,%s,%f,%f,%f",utente.username.c_str(),utente.password.c_str(),utente.x,utente.y,utente.theta);
+		*/
+		/*getline(iFile,line,' ');
+		ROS_INFO("%s",line.c_str());*/
+		
+	  }
+	  //DA FAR FUNZIONARE STA MERDA DI LETTURA DA FILE
+	  
+	  
+	  iFile.close();
+	  
+	  //ABUSIVO
+	  utente.username="user1";
+	  utente.password="user1";
+	  utente.x=10.0;
+	  utente.y=10.0;
+	  utente.theta=0.0;
+	  users.push_back(utente);
+	  utente.username="user2";
+	  utente.password="user2";
+	  utente.x=20.0;
+	  utente.y=20.0;
+	  utente.theta=0.0;
+	  users.push_back(utente);
+	  
+	  return true;
+}
+
+bool login_utente(pick_and_delivery::UserLogin::Request  &req, pick_and_delivery::UserLogin::Response &res)
+{
+  ROS_INFO("user: [%s]",req.username.c_str());
+  
+  for (std::vector<user>::iterator it = users.begin(); it != users.end(); ++it)
+  {
+	  if(it->username==req.username && it->password==req.password)
+	  {
+		  user loggato;
+		  loggato.username=req.username;
+		  loggato.password=req.password;
+		  loggato.x=it->x;
+		  loggato.y=it->y;
+		  loggato.theta=it->theta;
+		  res.login="OK";
+		  usersLogIn.push_back(loggato);
+		  
+		  ROS_INFO("sending back response: [%s] LOGIN, user: %s", res.login.c_str(),it->username.c_str());
+		  return true;
+	  }
+  }
+  res.login="ERROR";
+  ROS_INFO("sending back response: [%s] LOGIN", res.login.c_str());
+  
+  return false;
+}
+
+
+int main(int argc, char **argv)
+{
+  ros::init(argc, argv, "pick_and_delivery");
+  ros::NodeHandle n;
+
+  //leggo gli utenti registrati al mio servizio
+  if(!ReadUsers())
+  { 
+	  return 1;
+  }
+  ROS_INFO("Utenti caricati sul server.");
+
+  //servizio ROS
+  ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
+  ROS_INFO("Ready to login user.");
+  
+  ros::spin();
+
+  return 0;
+}
