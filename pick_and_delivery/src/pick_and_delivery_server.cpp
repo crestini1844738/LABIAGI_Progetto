@@ -1,7 +1,7 @@
 #include "ros/ros.h"
 #include "pick_and_delivery/UserLogin.h"
 
-
+//#include "pick_and_delivery.h"
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -49,7 +49,7 @@ bool ReadUsers()
 		ROS_INFO("%s",line.c_str());*/
 		
 	  }
-	  //DA FAR FUNZIONARE STA MERDA DI LETTURA DA FILE
+	  //DA FAR FUNZIONARE STA MERDA DI LETTURA DA FILE(possibile problema con \n a termine riga)
 	  
 	  
 	  iFile.close();
@@ -103,17 +103,17 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, "pick_and_delivery");
   ros::NodeHandle n;
-
+  ROS_INFO("SERVER RUN");
   //leggo gli utenti registrati al mio servizio
-  if(!ReadUsers())
-  { 
-	  return 1;
-  }
-  ROS_INFO("Utenti caricati sul server.");
-
+  if(!ReadUsers()) return 1;
+  
+  ROS_INFO("Utenti caricati sul server. Presenti %d utenti registrati al servizio",static_cast<int>(users.size()));
+  for(user u:users)
+	  ROS_INFO("user: %s",u.username.c_str());
+  
   //servizio ROS
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
-  ROS_INFO("Ready to login user.");
+  ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   
   ros::spin();
 
