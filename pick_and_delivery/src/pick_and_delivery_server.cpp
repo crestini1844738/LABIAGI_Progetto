@@ -1,5 +1,6 @@
 #include "ros/ros.h"
 #include "pick_and_delivery/UserLogin.h"
+#include "pick_and_delivery/ControlSendOrRec.h"
 
 //#include "pick_and_delivery.h"
 #include <string>
@@ -8,8 +9,8 @@
 #include <string>
 #include <iomanip>
 #include <cstring>  
-
-
+#include "std_msgs/String.h"
+#include <sstream>
 int num_users=4;
 struct user{
 	std::string username;
@@ -92,13 +93,33 @@ bool login_utente(pick_and_delivery::UserLogin::Request  &req, pick_and_delivery
 		  return true;
 	  }
   }
-  res.login="ERROR";
+  res.login="ERROR: Username o password errati";
   ROS_INFO("sending back response: [%s] LOGIN", res.login.c_str());
   
   return false;
 }
 
-
+/*bool controllo_send_or_rec_login(pick_and_delivery::ControlSendOrRec::Request  &req, pick_and_delivery::ControlSendOrRec::Response &res)
+{
+	int count=0;
+	ros::Rate rate(1);
+	while(count<30)//timeout 30 secondi. Se l'utente mittente o destinatario non è anchesso loggato termina
+	{
+		for (user u:usersLogIn)
+		  {
+			  if(u.username==req.username)
+			  {
+				  res.responseControl="OK";
+				  return true;
+			  }
+		  }
+		 rate.sleep();
+		 count++;
+	}
+	res.responseControl="ERRORE: utente mittende/destinatario non loggato sul server";
+	return false;
+	
+}*/
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "pick_and_delivery");
@@ -113,6 +134,7 @@ int main(int argc, char **argv)
   
   //servizio ROS
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
+  //ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   
   ros::spin();

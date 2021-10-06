@@ -61,7 +61,7 @@ add_service_files(
 #   Service2.srv
   AddTwoInts.srv
   UserLogin.srv
-  secondo.srv
+  ControlSendOrRec.srv
  )
 
 ## Generate actions in the 'action' folder
