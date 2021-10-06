@@ -5,11 +5,16 @@
 #include <cstdlib>
 #include "std_msgs/String.h"
 #include <sstream>
+#include <ctime>
+#define TIMEOUT 10
 std::string my_user;
 std::string my_pass;
 std::string scelta; //send per inviare,rec  per ricevere
 std::string other_user; //definisce l' altro utente a cui voglio spedire o da cui voglio ricevere
-
+std::string inputString;
+int controllo_timer=0;
+//int TIMEOUT=10;
+int tempo=0;
 void send_or_receive() //scelta se mittente e destinatario e altro utente
 {
 	while(true)
@@ -24,7 +29,7 @@ void send_or_receive() //scelta se mittente e destinatario e altro utente
   }
   while(true)
   {
-    ROS_INFO("Inserisci l' Username del mittente/destinatario: ");
+    ROS_INFO("Inserisci l' Username del mittente/destinatario:");
     std::getline(std::cin, other_user);
     if(other_user==my_user)
       ROS_INFO("Non puoi essere sia mittente che destinatario");
@@ -44,12 +49,15 @@ void client_destinatario(ros::NodeHandle n) //per gestire un client che vuole RI
 	ROS_INFO("RICEZIONE PACCO");
 }
 
-
-
-
+void ExitFailTimeout()
+{
+		ROS_ERROR("TIMEOUT!");	
+		exit(EXIT_FAILURE);	
+}
 
 int main(int argc, char **argv)
 {
+  
   /** Controllo argomenti passati[user,password]*/
   ros::init(argc, argv, "pick_and_delivery_client");
   if (argc != 3)
@@ -59,6 +67,7 @@ int main(int argc, char **argv)
   }
 
   ros::NodeHandle n;
+
   /**servizio login*/
   ros::ServiceClient client = n.serviceClient<pick_and_delivery::UserLogin>("UserLogin");
   pick_and_delivery::UserLogin srvUserLogin;
@@ -88,25 +97,63 @@ int main(int argc, char **argv)
   /**scelta client di invio o ricezione pacco  e utente mittente/destinatario*/
   send_or_receive();
   
-  
-  
+ 
   /**controllo che l' altro utente sia loggato*/
-  /*ros::ServiceClient client_ControlSendOrRec=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
+  ROS_INFO("In attesa che il mittente/destinatario sia connesso al server...");
+  
+  
+  //ros::ServiceClient client_ControlSendOrRec=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
+  client=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
   pick_and_delivery::ControlSendOrRec srvControlSendOrRec;
   
   srvControlSendOrRec.request.username=other_user;
-  if (client_ControlSendOrRec.call(srvControlSendOrRec))
+  
+  controllo_timer=1;
+  tempo=static_cast<long int> (time(NULL));
+  while(static_cast<long int> (time(NULL))<tempo+TIMEOUT)
   {
-	if(srvControlSendOrRec.response.responseControl!="OK")
-	{	ROS_ERROR("ERROR: %s",srvControlSendOrRec.response.responseControl.c_str());
-		return 1;
-	}
+	  if (client.call(srvControlSendOrRec))
+	  {
+			if(srvControlSendOrRec.response.responseControl!="OK")
+			{	
+				continue;
+			}
+			else
+			{
+				controllo_timer=0;
+				break;
+			}
+	  }
+	  else
+	  {
+			ROS_ERROR("Failed to call service ControlSendOrRec");
+			return 1;
+	  }
   }
-  else
+  if(controllo_timer) ExitFailTimeout();
+  ROS_INFO("OK. Altro utente connesso!");
+
+
+/**CONTROLLO che il robot non sia già impegnato in atrl*/
+
+//TODO
+  /**iniziare l'invio/ricezione*/
+   //start per iniziare la connessione
+   while(true)
   {
-	ROS_ERROR("Failed to call service ControlSendOrRec");
-	return 1;
-  }*/
+	ROS_INFO("S to start");
+    std::getline(std::cin, inputString);
+    if(inputString.compare("S") != 0 )
+      ROS_INFO("Scelta non valida(send or rec)");
+    else
+		break;
+  }
+  
+  
+  
+  
+  
+  
   
   
   
