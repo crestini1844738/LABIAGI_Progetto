@@ -62,6 +62,7 @@ add_service_files(
   AddTwoInts.srv
   UserLogin.srv
   ControlSendOrRec.srv
+  ControlRobotReady.srv
  )
 
 ## Generate actions in the 'action' folder

@@ -1,12 +1,15 @@
 #include "ros/ros.h"
 #include "pick_and_delivery/UserLogin.h"
 #include "pick_and_delivery/ControlSendOrRec.h"
+#include "pick_and_delivery/ControlRobotReady.h"
 
 #include <cstdlib>
 #include "std_msgs/String.h"
 #include <sstream>
 #include <ctime>
-#define TIMEOUT 10
+#define TIMEOUT 10  //TIMEOUT interazione utente
+#define TIMEOUT2 10  //TIMEOUT di attesa del robot impegnato per altri trasporti
+
 std::string my_user;
 std::string my_pass;
 std::string scelta; //send per inviare,rec  per ricevere
@@ -49,9 +52,9 @@ void client_destinatario(ros::NodeHandle n) //per gestire un client che vuole RI
 	ROS_INFO("RICEZIONE PACCO");
 }
 
-void ExitFailTimeout()
+void ExitFailTimeout(std::string errore)
 {
-		ROS_ERROR("TIMEOUT!");	
+		ROS_ERROR("TIMEOUT! %s",errore.c_str());	
 		exit(EXIT_FAILURE);	
 }
 
@@ -102,7 +105,6 @@ int main(int argc, char **argv)
   ROS_INFO("In attesa che il mittente/destinatario sia connesso al server...");
   
   
-  //ros::ServiceClient client_ControlSendOrRec=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
   client=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
   pick_and_delivery::ControlSendOrRec srvControlSendOrRec;
   
@@ -130,15 +132,64 @@ int main(int argc, char **argv)
 			return 1;
 	  }
   }
-  if(controllo_timer) ExitFailTimeout();
+  if(controllo_timer) ExitFailTimeout("utente non loggato in tempo");
   ROS_INFO("OK. Altro utente connesso!");
 
 
-/**CONTROLLO che il robot non sia già impegnato in atrl*/
+/**CONTROLLO che il robot non sia già impegnato in altri trasporti*/
+
+  ROS_INFO("In attesa che il robot sia disponibile...");
+  client=n.serviceClient<pick_and_delivery::ControlRobotReady>("ControlRobotReady");
+  pick_and_delivery::ControlRobotReady srvControlRobotReady;
+  
+  if(scelta.compare("send")==0)
+  {
+	  //se sono io che invio
+	  srvControlRobotReady.request.mittente=my_user; //mittente sono io
+      srvControlRobotReady.request.destinatario=other_user; //destinatario è l' altro
+  }
+  else
+  {
+	  //se sono io che ricevo
+	  srvControlRobotReady.request.mittente=other_user; //mittente è l' altro
+      srvControlRobotReady.request.destinatario=my_user; //destinatario sono io
+  }
+  
+
+
+
+
+  controllo_timer=1;
+  tempo=static_cast<long int> (time(NULL));
+  while(static_cast<long int> (time(NULL))<tempo+TIMEOUT2)
+  {
+	  if (client.call(srvControlRobotReady))
+	  {
+			if(srvControlRobotReady.response.responseControl!="OK")
+			{	
+				continue;
+			}
+			else
+			{
+				controllo_timer=0;
+				break;
+			}
+	  }
+	  else
+	  {
+			ROS_ERROR("Failed to call service ControlRobotReady");
+			return 1;
+	  }
+  }
+  if(controllo_timer) ExitFailTimeout("tempo di attesa del robot elevato");
+  ROS_INFO("OK! Robot pronto per la spedizione");
+
+
+
 
 //TODO
   /**iniziare l'invio/ricezione*/
-   //start per iniziare la connessione
+   //start per iniziare la connessione(OSS:il destinatario non deve fare questo start)
    while(true)
   {
 	ROS_INFO("S to start");

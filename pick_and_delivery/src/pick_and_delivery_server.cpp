@@ -1,6 +1,7 @@
 #include "ros/ros.h"
 #include "pick_and_delivery/UserLogin.h"
 #include "pick_and_delivery/ControlSendOrRec.h"
+#include "pick_and_delivery/ControlRobotReady.h"
 
 //#include "pick_and_delivery.h"
 #include <string>
@@ -11,6 +12,7 @@
 #include <cstring>  
 #include "std_msgs/String.h"
 #include <sstream>
+#include <deque>
 int num_users=4;
 struct user{
 	std::string username;
@@ -22,6 +24,15 @@ struct user{
 
 std::vector<user> users;
 std::vector<user> usersLogIn;
+
+
+struct shipment{
+	user mittente;
+	user destinatario;
+};
+
+std::deque<shipment> codaTrasporti;
+
 bool ReadUsers()
 {
 		//OSS: bisgona stare nella cartella src per eseguire il server altrimenti non vede il file degli utenti()
@@ -68,8 +79,31 @@ bool ReadUsers()
 	  utente.y=20.0;
 	  utente.theta=0.0;
 	  users.push_back(utente);
-	  
+	  utente.username="user3";
+	  utente.password="user3";
+	  utente.x=30.0;
+	  utente.y=30.0;
+	  utente.theta=0.0;
+	  users.push_back(utente);
+	  utente.username="user4";
+	  utente.password="user4";
+	  utente.x=40.0;
+	  utente.y=40.0;
+	  utente.theta=0.0;
+	  users.push_back(utente);
 	  return true;
+}
+
+
+user getUser(std::string nomeutente)
+{
+	for (user u:usersLogIn)
+	  {
+		  if(u.username==nomeutente)
+		  {
+			  return u;
+		  }
+	  }
 }
 
 bool login_utente(pick_and_delivery::UserLogin::Request  &req, pick_and_delivery::UserLogin::Response &res)
@@ -113,6 +147,45 @@ bool controllo_send_or_rec_login(pick_and_delivery::ControlSendOrRec::Request  &
 	
 }
 
+
+bool controllo_robot_occupato(pick_and_delivery::ControlRobotReady::Request  &req, pick_and_delivery::ControlRobotReady::Response &res)
+{
+		shipment trasporto;
+		trasporto.mittente=getUser(req.mittente);
+		trasporto.destinatario=getUser(req.destinatario);
+		//se il mio trasporto non è in coda lo inserisco
+		std::deque<shipment>::iterator it = codaTrasporti.begin();
+		bool presente=false;
+		while (it != codaTrasporti.end())
+		{  
+			  if((*it).mittente.username==req.mittente  && (*it).destinatario.username==req.destinatario)
+				{
+						presente=true;
+						break;
+				}
+			*it++;
+		}  
+  
+		if(!presente)
+			codaTrasporti.push_back(trasporto);
+			
+		
+		//controllo se è il mio turno notifico che tocca a me
+		//altrimenti attendo
+		
+		shipment first=codaTrasporti.front();
+		if(first.mittente.username==req.mittente && first.destinatario.username==req.destinatario)
+		{
+			  res.responseControl="OK";
+			  return true;
+		}
+		
+		res.responseControl="ERRORE: trasporto occupato";
+	    return true;
+	
+	
+}
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "pick_and_delivery");
@@ -128,6 +201,7 @@ int main(int argc, char **argv)
   //servizio ROS
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
   ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);
+  ros::ServiceServer service_ControlRobotReady=n.advertiseService("ControlRobotReady",controllo_robot_occupato); //da testare per bene
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   
   ros::spin();
