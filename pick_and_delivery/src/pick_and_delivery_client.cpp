@@ -2,6 +2,9 @@
 #include "pick_and_delivery/UserLogin.h"
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
+#include "pick_and_delivery/Spedizione.h"
+#include "pick_and_delivery/InfoComunication.h"
+
 
 #include <cstdlib>
 #include "std_msgs/String.h"
@@ -16,6 +19,7 @@ std::string scelta; //send per inviare,rec  per ricevere
 std::string other_user; //definisce l' altro utente a cui voglio spedire o da cui voglio ricevere
 std::string inputString;
 int controllo_timer=0;
+bool arrivato=false;
 //int TIMEOUT=10;
 int tempo=0;
 void send_or_receive() //scelta se mittente e destinatario e altro utente
@@ -40,14 +44,14 @@ void send_or_receive() //scelta se mittente e destinatario e altro utente
 		break;
   }
 }
-void client_mittente(ros::NodeHandle n) //per gestire un client che vuole INVIARE un pacco
-{
-	ROS_INFO("SPEDIZIONE PACCO");
-}
 
 
 
-void client_destinatario(ros::NodeHandle n) //per gestire un client che vuole RICEVERE un pacco
+
+
+
+
+void client_destinatario(ros::ServiceClient client,ros::NodeHandle n) //per gestire un client che vuole RICEVERE un pacco
 {
 	ROS_INFO("RICEZIONE PACCO");
 }
@@ -57,6 +61,52 @@ void ExitFailTimeout(std::string errore)
 		ROS_ERROR("TIMEOUT! %s",errore.c_str());	
 		exit(EXIT_FAILURE);	
 }
+
+void ExitFail(std::string errore)
+{
+		ROS_ERROR("%s",errore.c_str());	
+		exit(EXIT_FAILURE);	
+}
+
+
+ros::Subscriber server_to_clientMittente;
+void server_to_client_Mittente_Callback(const pick_and_delivery::InfoComunication::ConstPtr& msg)
+{
+	 if(msg->status==0)
+	 {
+		 arrivato=true;
+		ROS_INFO("Info: %s",msg->info.c_str());
+	 }
+}
+/**SPEDIZIONE IN USCITA, CLIENT INVIA IL PACCO*/
+void client_mittente(ros::ServiceClient client, ros::NodeHandle n) 
+{
+  client = n.serviceClient<pick_and_delivery::Spedizione>("Spedizione");
+  pick_and_delivery::Spedizione srvSpedizione;
+  srvSpedizione.request.mittente = my_user;
+  srvSpedizione.request.destinatario = other_user;
+  if (client.call(srvSpedizione))
+  {
+	/**gestione della spedizone con comunicazione tramite messaggi*/
+	
+	  ROS_INFO("SPEDIZIONE PACCO");
+	  
+	  ROS_INFO("In attesa che il robot arrivi...");
+	  while(!arrivato)
+	  {
+		 ros :: spinOnce (); 
+	  }
+	  ROS_INFO("Arrivato");
+	
+  }
+  else
+  {
+	ExitFail("Failed to call service Spedizone");
+  }
+  
+}
+
+
 
 int main(int argc, char **argv)
 {
@@ -70,7 +120,9 @@ int main(int argc, char **argv)
   }
 
   ros::NodeHandle n;
-
+  server_to_clientMittente = n.subscribe("server_to_clientMittente", 1000, server_to_client_Mittente_Callback);
+  
+  
   /**servizio login*/
   ros::ServiceClient client = n.serviceClient<pick_and_delivery::UserLogin>("UserLogin");
   pick_and_delivery::UserLogin srvUserLogin;
@@ -138,6 +190,10 @@ int main(int argc, char **argv)
 
 /**CONTROLLO che il robot non sia già impegnato in altri trasporti*/
 
+  //invio le specifiche del mio trasporto cioè chi è il mittente e chi il destinatario
+  //nel server se nella coda dei trasporti il primo in coda è proprio il mio trasporto posso procedere
+  //altrimenti attendo il mio turno
+  //se l' attesa è troppo elevata esco(TIMEOUT2) OSS:posso scegliere di attendere all' infinito finche non è il mio turno
   ROS_INFO("In attesa che il robot sia disponibile...");
   client=n.serviceClient<pick_and_delivery::ControlRobotReady>("ControlRobotReady");
   pick_and_delivery::ControlRobotReady srvControlRobotReady;
@@ -190,7 +246,7 @@ int main(int argc, char **argv)
 //TODO
   /**iniziare l'invio/ricezione*/
    //start per iniziare la connessione(OSS:il destinatario non deve fare questo start)
-   while(true)
+  /* while(true)
   {
 	ROS_INFO("S to start");
     std::getline(std::cin, inputString);
@@ -198,7 +254,7 @@ int main(int argc, char **argv)
       ROS_INFO("Scelta non valida(send or rec)");
     else
 		break;
-  }
+  }*/
   
   
   
@@ -209,9 +265,10 @@ int main(int argc, char **argv)
   
   
   if(scelta.compare("send")==0)
-	  client_mittente(n);
+  
+    client_mittente(client,n);
   else
-      client_destinatario(n);
+      client_destinatario(client,n);
   
   
   

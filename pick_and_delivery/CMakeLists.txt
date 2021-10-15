@@ -52,6 +52,7 @@ add_message_files(
 #   Message1.msg
 #   Message2.msg
 	Num.msg
+	InfoComunication.msg
  )
 
 ## Generate services in the 'srv' folder
@@ -63,6 +64,7 @@ add_service_files(
   UserLogin.srv
   ControlSendOrRec.srv
   ControlRobotReady.srv
+  Spedizione.srv
  )
 
 ## Generate actions in the 'action' folder

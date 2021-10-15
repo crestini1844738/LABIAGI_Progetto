@@ -2,6 +2,11 @@
 #include "pick_and_delivery/UserLogin.h"
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
+#include "pick_and_delivery/Spedizione.h"
+#include "pick_and_delivery/InfoComunication.h" //due campi: status e info
+												//status 0: ancora in esecuzione
+												//status 1: terminato con successo; info con messaggio di successo
+												//status -1: terminato con errore; info errore
 
 //#include "pick_and_delivery.h"
 #include <string>
@@ -14,6 +19,9 @@
 #include <sstream>
 #include <deque>
 int num_users=4;
+
+
+
 struct user{
 	std::string username;
 	std::string password;
@@ -154,6 +162,7 @@ bool controllo_robot_occupato(pick_and_delivery::ControlRobotReady::Request  &re
 		trasporto.mittente=getUser(req.mittente);
 		trasporto.destinatario=getUser(req.destinatario);
 		//se il mio trasporto non è in coda lo inserisco
+		//politica: non più di un trasporto in coda con stesso mittente e destinatario(altrimenti code di priorità)
 		std::deque<shipment>::iterator it = codaTrasporti.begin();
 		bool presente=false;
 		while (it != codaTrasporti.end())
@@ -186,10 +195,28 @@ bool controllo_robot_occupato(pick_and_delivery::ControlRobotReady::Request  &re
 	
 }
 
+ ros::Publisher server_to_clientMittente;
+ 
+bool spedizione(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
+{
+	pick_and_delivery::InfoComunication message;
+	message.status=0;
+	message.info="arrivato";
+	server_to_clientMittente.publish(message);
+	ros :: spinOnce (); 
+	ROS_INFO("ARRIVATO");
+	return true;
+}
+
+
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "pick_and_delivery");
   ros::NodeHandle n;
+
+  server_to_clientMittente = n.advertise<pick_and_delivery::InfoComunication>("server_to_clientMittente", 1000);
+  
   ROS_INFO("SERVER RUN");
   //leggo gli utenti registrati al mio servizio
   if(!ReadUsers()) return 1;
@@ -202,6 +229,8 @@ int main(int argc, char **argv)
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
   ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);
   ros::ServiceServer service_ControlRobotReady=n.advertiseService("ControlRobotReady",controllo_robot_occupato); //da testare per bene
+  ros::ServiceServer service_Spedizione=n.advertiseService("Spedizione",spedizione);
+
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   
   ros::spin();
