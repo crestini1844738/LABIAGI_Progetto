@@ -41,9 +41,11 @@ int error=0;
 std::vector<float> target_position(2.0); //nuova posizione mentre mi sposto(ad ogni passo)
 std::vector<float> old_position(2.0);    //vecchia posizione mentre mi sposto(ad ogni passo)
 std::vector<float> current_position(2.0);
+
+
 geometry_msgs::PoseStamped new_goal_msg;
 tf2_ros::Buffer tfBuffer; //buffer per le trasformate
-size_t n=10;
+size_t num=10;
 int message_published=0;
 
 
@@ -51,13 +53,12 @@ int message_published=0;
 int cruising=0;
 
 ros::Publisher robot;
-tf2_ros::TransformListener tfListener(tfBuffer);
 
 //callback usata per vedere la posizione del robot ad ogni istante
 	//mi iscrivo al topic tf e chiamare la position_callback.
 	//Ogni volta che vengono pubblicati messaggi sul topic tf si avvia la position_callback
     //in modo da avere sempre l' ultima posione del roboto aggiornata
-	ros::Subscriber sub_tf;
+ros::Subscriber sub_tf;
 
 
 struct user{
@@ -115,27 +116,27 @@ bool ReadUsers()
 	  //ABUSIVO
 	  utente.username="user1";
 	  utente.password="user1";
-	  utente.x=10.0;
+	  utente.x=32.0;
 	  utente.y=10.0;
-	  utente.theta=0.0;
+	  utente.theta=1.0;
 	  users.push_back(utente);
 	  utente.username="user2";
 	  utente.password="user2";
-	  utente.x=20.0;
-	  utente.y=20.0;
-	  utente.theta=0.0;
+	  utente.x=29.0;
+	  utente.y=9.0;
+	  utente.theta=1.0;
 	  users.push_back(utente);
 	  utente.username="user3";
 	  utente.password="user3";
-	  utente.x=30.0;
-	  utente.y=30.0;
-	  utente.theta=0.0;
+	  utente.x=15.0;
+	  utente.y=9.0;
+	  utente.theta=1.0;
 	  users.push_back(utente);
 	  utente.username="user4";
 	  utente.password="user4";
-	  utente.x=40.0;
-	  utente.y=40.0;
-	  utente.theta=0.0;
+	  utente.x=10.0;
+	  utente.y=10.0;
+	  utente.theta=1.0;
 	  users.push_back(utente);
 	  return true;
 }
@@ -237,11 +238,11 @@ bool controllo_robot_occupato(pick_and_delivery::ControlRobotReady::Request  &re
 void position_CallBack(const tf2_msgs::TFMessage& tf)
 {
 	int transform_ok=tfBuffer.canTransform("map","base_link",ros::Time(0));
-	if(transform_ok!=0)//posso transformare 
+	if(transform_ok!=0)//posso trasformare 
 	{
 		geometry_msgs::TransformStamped transformStamped;
 		transformStamped = tfBuffer.lookupTransform("map","base_link",ros::Time(0));
-		
+		ROS_INFO("trasformata:[x:%f , y:%f]",transformStamped.transform.translation.x,transformStamped.transform.translation.y);
 		//è sufficente controllare le x e le y per vedere se mi sto muovendo
 		//theta non serve. se lo metto ho problemi di gestione di altro genere
 		current_position[0]=transformStamped.transform.translation.x;
@@ -313,8 +314,8 @@ bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery
 	user mittente=trasporto.mittente;
 	user destinatario=trasporto.destinatario;
 	/**setto la posizione di dove andare  prelevare il pacco*/
-	new_goal_msg.header.seq=n;
-	n++;
+	new_goal_msg.header.seq=num;
+	num++;
 	new_goal_msg.header.stamp=ros::Time::now();
 	new_goal_msg.header.frame_id="map";
 	
@@ -339,15 +340,30 @@ bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery
 	target_position[0]=new_goal_msg.pose.position.x;
 	target_position[1]=new_goal_msg.pose.position.y;
 	
-	if(message_published!=0)
-	{
-		//pubblico la nuova posizione che il robot andrà ad assumere
-		robot.publish(new_goal_msg);
-		message_published=0;
-	}
+	//pubblico la nuova posizione che il robot andrà ad assumere
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",new_goal_msg.pose.position.x,new_goal_msg.pose.position.y,new_goal_msg.pose.orientation.w);
+	robot.publish(new_goal_msg);
 	ros::spinOnce();
-	while(cruising)
-		continue;
+	// il robot non si sposta BHOOO
+	ROS_INFO("in attesa che il robot arrivi");
+	while(ros::ok())
+	{
+		/*int transform_ok=tfBuffer.canTransform("map","base_link",ros::Time(0));
+		if(transform_ok!=0)//posso trasformare 
+		{
+			geometry_msgs::TransformStamped transformStamped;
+			transformStamped = tfBuffer.lookupTransform("map","base_link",ros::Time(0));
+			ROS_INFO("trasformata:[x:%f , y:%f]",transformStamped.transform.translation.x,transformStamped.transform.translation.y);
+			//è sufficente controllare le x e le y per vedere se mi sto muovendo
+			//theta non serve. se lo metto ho problemi di gestione di altro genere
+			current_position[0]=transformStamped.transform.translation.x;
+			current_position[1]=transformStamped.transform.translation.y;
+
+		}
+		ros::spinOnce();*/
+		if(!cruising) break;
+
+	}
 	switch(error)
 	{
 		case 1: //robot bloccato
@@ -371,10 +387,18 @@ bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "pick_and_delivery");
+  
   ros::NodeHandle n;
+    
+  ROS_INFO("SERVER RUN");
+  //leggo gli utenti registrati al mio servizio
+  if(!ReadUsers()) return 1;
   
-  
-  
+  ROS_INFO("Utenti caricati sul server. Presenti %d utenti registrati al servizio",static_cast<int>(users.size()));
+  for(user u:users)
+	  ROS_INFO("user: %s",u.username.c_str());
+  tf2_ros::TransformListener tfListener(tfBuffer);
+
   robot=n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal",1000);
   sub_tf=n.subscribe("tf",1000,position_CallBack);
   
@@ -384,16 +408,6 @@ int main(int argc, char **argv)
 	ros::Timer timer2=n.createTimer(ros::Duration(50),check2_CallBack);
 	
 	
-  //server_to_clientMittente = n.advertise<pick_and_delivery::InfoComunication>("server_to_clientMittente", 1000);
-  
-  ROS_INFO("SERVER RUN");
-  //leggo gli utenti registrati al mio servizio
-  if(!ReadUsers()) return 1;
-  
-  ROS_INFO("Utenti caricati sul server. Presenti %d utenti registrati al servizio",static_cast<int>(users.size()));
-  for(user u:users)
-	  ROS_INFO("user: %s",u.username.c_str());
-  
   //servizio ROS
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
   ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);

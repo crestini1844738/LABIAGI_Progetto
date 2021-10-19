@@ -69,16 +69,6 @@ void ExitFail(std::string errore)
 }
 
 
-/*ros::Subscriber server_to_clientMittente;
-void server_to_client_Mittente_Callback(const pick_and_delivery::InfoComunication::ConstPtr& msg)
-{
-	 if(msg->status==0)
-	 {
-		 arrivato=true;
-		ROS_INFO("Info: %s",msg->info.c_str());
-	 }
-}*/
-
 
 
 
