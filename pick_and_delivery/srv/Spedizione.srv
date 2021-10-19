@@ -1,4 +1,6 @@
 string mittente
 string destinatario
 ---
-string responseControl
+int64 status
+string info
+

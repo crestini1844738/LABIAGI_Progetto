@@ -3,7 +3,7 @@
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
 #include "pick_and_delivery/Spedizione.h"
-#include "pick_and_delivery/InfoComunication.h"
+//#include "pick_and_delivery/InfoComunication.h"
 
 
 #include <cstdlib>
@@ -69,7 +69,7 @@ void ExitFail(std::string errore)
 }
 
 
-ros::Subscriber server_to_clientMittente;
+/*ros::Subscriber server_to_clientMittente;
 void server_to_client_Mittente_Callback(const pick_and_delivery::InfoComunication::ConstPtr& msg)
 {
 	 if(msg->status==0)
@@ -77,34 +77,46 @@ void server_to_client_Mittente_Callback(const pick_and_delivery::InfoComunicatio
 		 arrivato=true;
 		ROS_INFO("Info: %s",msg->info.c_str());
 	 }
-}
+}*/
+
+
+
+
+
+
 /**SPEDIZIONE IN USCITA, CLIENT INVIA IL PACCO*/
 void client_mittente(ros::ServiceClient client, ros::NodeHandle n) 
 {
-  client = n.serviceClient<pick_and_delivery::Spedizione>("Spedizione");
-  pick_and_delivery::Spedizione srvSpedizione;
-  srvSpedizione.request.mittente = my_user;
-  srvSpedizione.request.destinatario = other_user;
-  if (client.call(srvSpedizione))
-  {
-	/**gestione della spedizone con comunicazione tramite messaggi*/
 	
-	  ROS_INFO("SPEDIZIONE PACCO");
-	  
-	  ROS_INFO("In attesa che il robot arrivi...");
-	  while(!arrivato)
-	  {
-		 ros :: spinOnce (); 
-	  }
-	  ROS_INFO("Arrivato");
+	ROS_INFO("SPEDIZIONE PACCO");
+  /** attendo che il robot arrivi alla mia posizione*/
+  client = n.serviceClient<pick_and_delivery::Spedizione>("AttesaRobot");
+  pick_and_delivery::Spedizione srvAttesaRobot;
+  srvAttesaRobot.request.mittente = my_user;
+  srvAttesaRobot.request.destinatario = other_user;
+  
+  ROS_INFO("In attesa che il robot arrivi...");
+  if (client.call(srvAttesaRobot))
+  {
+	    if(srvAttesaRobot.response.status==-1)
+			ExitFail(srvAttesaRobot.response.info);
+	 
 	
   }
   else
   {
-	ExitFail("Failed to call service Spedizone");
+	ExitFail("Failed to call service AttesaRobot");
   }
   
+  ROS_INFO("ROBOT ARRIVATO");
+  
 }
+
+
+
+
+
+
 
 
 
@@ -120,7 +132,7 @@ int main(int argc, char **argv)
   }
 
   ros::NodeHandle n;
-  server_to_clientMittente = n.subscribe("server_to_clientMittente", 1000, server_to_client_Mittente_Callback);
+  //server_to_clientMittente = n.subscribe("server_to_clientMittente", 1000, server_to_client_Mittente_Callback);
   
   
   /**servizio login*/
