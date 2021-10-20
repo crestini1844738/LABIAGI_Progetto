@@ -51,6 +51,7 @@ int message_published=0;
 
 //se ci stiamo spostando setto a 1 altrimenti 0
 int cruising=0;
+time_t T=10;
 
 ros::Publisher robot;
 
@@ -116,15 +117,15 @@ bool ReadUsers()
 	  //ABUSIVO
 	  utente.username="user1";
 	  utente.password="user1";
-	  utente.x=32.0;
-	  utente.y=10.0;
-	  utente.theta=1.0;
+	  utente.x=53.0;
+	  utente.y=18.0;
+	  utente.theta=0.02;
 	  users.push_back(utente);
 	  utente.username="user2";
 	  utente.password="user2";
-	  utente.x=29.0;
-	  utente.y=9.0;
-	  utente.theta=1.0;
+	  utente.x=54.0;
+	  utente.y=20.0;
+	  utente.theta=0.02;
 	  users.push_back(utente);
 	  utente.username="user3";
 	  utente.password="user3";
@@ -270,6 +271,7 @@ void check1_CallBack(const ros::TimerEvent& event)
 		{
 			ROS_INFO("PROBLEMAAA!!!");
 			error=1;
+			//cruising=0;
 		}
 		
 		//per verificare se sono arrivato al goal
@@ -305,29 +307,25 @@ void check2_CallBack(const ros::TimerEvent& event)
 }
 
 
-//ros::Publisher server_to_clientMittente;
-/**ROBOT VERSO IL CLIENT*/
+/**ROBOT VERSO IL CLIENT MITTENTE*/
 bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
 {
 	//prelevo dalla coda dei trasporti il primo trasporto in coda con mittente e destinatario che corrispondono a Request.mittente e Request.destinatario
-	shipment trasporto=codaTrasporti.front();
-	user mittente=trasporto.mittente;
-	user destinatario=trasporto.destinatario;
+	//shipment trasporto=codaTrasporti.front();
+	user fromTo=getUser(req.fromToUser);
+	
 	/**setto la posizione di dove andare  prelevare il pacco*/
 	new_goal_msg.header.seq=num;
 	num++;
 	new_goal_msg.header.stamp=ros::Time::now();
 	new_goal_msg.header.frame_id="map";
-	
-	new_goal_msg.pose.position.x=mittente.x;
-	new_goal_msg.pose.position.y=mittente.y;
+	new_goal_msg.pose.position.x=fromTo.x;
+	new_goal_msg.pose.position.y=fromTo.y;
 	new_goal_msg.pose.position.z=0;
-	
-	
 	new_goal_msg.pose.orientation.x=0;
 	new_goal_msg.pose.orientation.y=0;
 	new_goal_msg.pose.orientation.z=0;
-	new_goal_msg.pose.orientation.w=mittente.theta;
+	new_goal_msg.pose.orientation.w=fromTo.theta;
 	
 	//per fare in modo che la callback viene chiamata solo una volta
 	message_published=1;
@@ -342,27 +340,25 @@ bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery
 	
 	//pubblico la nuova posizione che il robot andrà ad assumere
 	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",new_goal_msg.pose.position.x,new_goal_msg.pose.position.y,new_goal_msg.pose.orientation.w);
-	robot.publish(new_goal_msg);
-	ros::spinOnce();
-	// il robot non si sposta BHOOO
-	ROS_INFO("in attesa che il robot arrivi");
-	while(ros::ok())
+	
+	tf2_ros::TransformListener tfListener(tfBuffer);
+	ros::Rate loop_rate(T);
+	
+	while(true)
 	{
-		/*int transform_ok=tfBuffer.canTransform("map","base_link",ros::Time(0));
-		if(transform_ok!=0)//posso trasformare 
+		if(message_published!=0)
 		{
-			geometry_msgs::TransformStamped transformStamped;
-			transformStamped = tfBuffer.lookupTransform("map","base_link",ros::Time(0));
-			ROS_INFO("trasformata:[x:%f , y:%f]",transformStamped.transform.translation.x,transformStamped.transform.translation.y);
-			//è sufficente controllare le x e le y per vedere se mi sto muovendo
-			//theta non serve. se lo metto ho problemi di gestione di altro genere
-			current_position[0]=transformStamped.transform.translation.x;
-			current_position[1]=transformStamped.transform.translation.y;
-
+			ROS_INFO("Publishing a new goal position");
+			robot.publish(new_goal_msg);
+			message_published=0;
 		}
-		ros::spinOnce();*/
-		if(!cruising) break;
-
+		
+		ros::spinOnce();
+		loop_rate.sleep();
+		
+		if(!cruising)
+			break;
+		
 	}
 	switch(error)
 	{
@@ -382,7 +378,76 @@ bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery
 	return true;
 }
 
-
+/**ROBOT VERSO IL CLIENT DESTINATARIO*/
+bool invioRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
+{
+	//prelevo dalla coda dei trasporti il primo trasporto in coda con mittente e destinatario che corrispondono a Request.mittente e Request.destinatario
+	shipment trasporto=codaTrasporti.front();
+	user mittente=trasporto.mittente;
+	user destinatario=trasporto.destinatario;
+	/**setto la posizione di dove andare a portare il pacco*/
+	new_goal_msg.header.seq=num;
+	num++;
+	new_goal_msg.header.stamp=ros::Time::now();
+	new_goal_msg.header.frame_id="map";
+	new_goal_msg.pose.position.x=32;
+	new_goal_msg.pose.position.y=10;
+	new_goal_msg.pose.position.z=0;
+	new_goal_msg.pose.orientation.x=0;
+	new_goal_msg.pose.orientation.y=0;
+	new_goal_msg.pose.orientation.z=0;
+	new_goal_msg.pose.orientation.w=0.02;
+	
+	//per fare in modo che la callback viene chiamata solo una volta
+	message_published=1;
+	
+	//mi sto spostando
+	cruising=1;
+	
+	
+	//salvare la goal position
+	target_position[0]=new_goal_msg.pose.position.x;
+	target_position[1]=new_goal_msg.pose.position.y;
+	
+	//pubblico la nuova posizione che il robot andrà ad assumere
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",new_goal_msg.pose.position.x,new_goal_msg.pose.position.y,new_goal_msg.pose.orientation.w);
+	
+	//tf2_ros::TransformListener tfListener(tfBuffer);
+	ros::Rate loop_rate(T);
+	
+	while(true)
+	{
+		if(message_published!=0)
+		{
+			ROS_INFO("Publishing a new goal position");
+			robot.publish(new_goal_msg);
+			message_published=0;
+		}
+		
+		ros::spinOnce();
+		loop_rate.sleep();
+		
+		if(!cruising)
+			break;
+		
+	}
+	switch(error)
+	{
+		case 1: //robot bloccato
+			res.status=-1;
+			res.info="ROBOT BLOCCATO";
+			break;
+		case 2: //goal non raggiunto in tempo
+			res.status=-1;
+			res.info="GOAL NON RAGGIUNTO IN TEMPO";
+			break;
+		default:
+			res.status=1;
+			res.info="ROBOT ARRIVATO AL DESTINATARIO";
+	}
+	
+	return true;
+}
 
 int main(int argc, char **argv)
 {
@@ -397,7 +462,7 @@ int main(int argc, char **argv)
   ROS_INFO("Utenti caricati sul server. Presenti %d utenti registrati al servizio",static_cast<int>(users.size()));
   for(user u:users)
 	  ROS_INFO("user: %s",u.username.c_str());
-  tf2_ros::TransformListener tfListener(tfBuffer);
+  //tf2_ros::TransformListener tfListener(tfBuffer);
 
   robot=n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal",1000);
   sub_tf=n.subscribe("tf",1000,position_CallBack);
@@ -413,6 +478,7 @@ int main(int argc, char **argv)
   ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);
   ros::ServiceServer service_ControlRobotReady=n.advertiseService("ControlRobotReady",controllo_robot_occupato); //da testare per bene
   ros::ServiceServer service_AttesaRobot=n.advertiseService("AttesaRobot",attesaRobot);
+  ros::ServiceServer service_InvioRobot=n.advertiseService("InvioRobot",invioRobot);
 
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   

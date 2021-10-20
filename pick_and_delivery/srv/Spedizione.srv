@@ -1,5 +1,4 @@
-string mittente
-string destinatario
+string fromToUser
 ---
 int64 status
 string info
