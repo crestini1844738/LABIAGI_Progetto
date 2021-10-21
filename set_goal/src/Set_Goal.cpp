@@ -14,6 +14,7 @@
 #include <tf2_msgs/TFMessage.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include "pick_and_delivery/InfoComunication.h"
 
 std::vector<float> target_position(2.0); //nuova posizione mentre mi sposto(ad ogni passo)
 std::vector<float> old_position(2.0);    //vecchia posizione mentre mi sposto(ad ogni passo)
@@ -21,6 +22,8 @@ std::vector<float> current_position(2.0);
 
 geometry_msgs::PoseStamped new_goal_msg;
 tf2_ros::Buffer tfBuffer; //buffer per le trasformate
+
+ros::Publisher pubStatusInfo;
 
 size_t n=10;
 int message_published=0;
@@ -103,13 +106,17 @@ void check1_CallBack(const ros::TimerEvent& event)
 	if(cruising!=0)
 	{
 		ROS_INFO("Controllo se mi sto muovendo...");
-		
+		pick_and_delivery::InfoComunication infoSTATUS; //status 0 ancora in movimento,-1 ERRORE,1 OK
+		infoSTATUS.status=0;
+		infoSTATUS.info="In movimento...";
 		//prendo la distanza tra la posizione corrente e quella precendete.
 		//se minore di un certo valore significa che mi sono bloccato
 		float distance;
 		distance=sqrt(pow(current_position[0]-old_position[0],2)+pow(current_position[1]-old_position[1],2));
 		if(distance < 0.8)
 		{
+			infoSTATUS.status=-1;
+			infoSTATUS.info="BLOCCATO";
 			ROS_INFO("PROBLEMAAA!!!");
 		}
 		
@@ -119,8 +126,11 @@ void check1_CallBack(const ros::TimerEvent& event)
 		if(sqrt(pow(current_position[0]-target_position[0],2)+pow(current_position[1]-target_position[1],2)) < 1.5)
 		{
 			ROS_INFO("Arrivato al goal");
+			infoSTATUS.status=1;
+			infoSTATUS.info="Arrivato al goal";
 			cruising=0; //non sono più in movimento
 		}
+		pubStatusInfo.publish(infoSTATUS);
 	}
 }
 
@@ -130,14 +140,22 @@ void check2_CallBack(const ros::TimerEvent& event)
 {
 	//se mi sto muovendo
 	if(cruising!=0)
-	{
+	{	
+		
 		ROS_INFO("Controllo se è passato troppo tempo...");
+		pick_and_delivery::InfoComunication infoSTATUS; //status 0 ancora in movimento,-1 ERRORE,1 OK
+		infoSTATUS.status=0;
+		infoSTATUS.info="In movimento...";
 		float distance;
 		distance=sqrt(pow(current_position[0]-target_position[0],2)+pow(current_position[1]-target_position[1],2));
 		if(distance> 0.5)
 		{
+			infoSTATUS.status=-1;
+			infoSTATUS.info="TIMEOUT";
 			ROS_INFO("TIMEOUT: Goal non raggiunto in tempo");
 		}
+		pubStatusInfo.publish(infoSTATUS);
+
 	}
 }
 
@@ -147,7 +165,8 @@ int main(int argc,char **argv)
 	
 	ros::NodeHandle n;
 	ros::Publisher pub=n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal",1000);
-	
+	pubStatusInfo=n.advertise<pick_and_delivery::InfoComunication>("infoComunication",1000);
+
 	
     tf2_ros::TransformListener tfListener(tfBuffer);
 	

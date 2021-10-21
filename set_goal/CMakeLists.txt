@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_py
   tf2_ros
   tf
+  pick_and_delivery
 )
 
 ## System dependencies are found with CMake's conventions
