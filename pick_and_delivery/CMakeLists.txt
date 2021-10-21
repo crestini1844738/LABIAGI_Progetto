@@ -11,14 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   message_generation
-  tf2
-  tf2_eigen
-  tf2_geometry_msgs
-  tf2_kdl
-  tf2_msgs
-  tf2_py
-  tf2_ros
-  tf
   set_goal
 )
 
@@ -58,23 +50,15 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
 add_message_files(
    FILES
-#   Message1.msg
-#   Message2.msg
-	Num.msg
 	InfoComunication.msg
-#	NewGoal.msg
  )
 
 ## Generate services in the 'srv' folder
 add_service_files(
    FILES
-#   Service1.srv
-#   Service2.srv
-  AddTwoInts.srv
   UserLogin.srv
   ControlSendOrRec.srv
   ControlRobotReady.srv
-  Spedizione.srv
   SpedizioneRobot.srv
 
  )

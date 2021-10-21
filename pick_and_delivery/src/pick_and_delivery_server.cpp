@@ -2,27 +2,13 @@
 #include "pick_and_delivery/UserLogin.h"
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
-#include "pick_and_delivery/Spedizione.h"
 #include "pick_and_delivery/SpedizioneRobot.h"
 
 #include "pick_and_delivery/InfoComunication.h" //due campi: status e info
 												//status 0: ancora in esecuzione
 												//status 1: terminato con successo; info con messaggio di successo
 												//status -1: terminato con errore; info errore
-//#include "set_goal/NewGoal.h"
-#include "geometry_msgs/PoseStamped.h"
-#include "tf/tf.h"
-#include "tf2_msgs/TFMessage.h"
-#include <tf/transform_listener.h>
-#include <tf2_ros/transform_listener.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <nav_msgs/Odometry.h>
-#include <sensor_msgs/LaserScan.h>
-#include <tf2_msgs/TFMessage.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_ros/transform_broadcaster.h>
 #include "set_goal/NewGoal.h"
-//#include "pick_and_delivery/NewGoal.h"
 
 
 #include <vector>
@@ -36,7 +22,8 @@
 #include <sstream>
 #include <deque>
 #include <ctime>
-
+#include <numeric>
+#include <string_view>
 #define TIMEOUT 10  //TIMEOUT interazione utente
 
 int num_users=4;
@@ -44,12 +31,11 @@ int num_users=4;
 int error=1;
 std::string information;
 
-std::vector<float> target_position(2.0); //nuova posizione mentre mi sposto(ad ogni passo)
-std::vector<float> old_position(2.0);    //vecchia posizione mentre mi sposto(ad ogni passo)
-std::vector<float> current_position(2.0);
+//std::vector<float> target_position(2.0); //nuova posizione mentre mi sposto(ad ogni passo)
+//std::vector<float> old_position(2.0);    //vecchia posizione mentre mi sposto(ad ogni passo)
+//std::vector<float> current_position(2.0);
 
-geometry_msgs::PoseStamped new_goal_msg;
-tf2_ros::Buffer tfBuffer; //buffer per le trasformate
+
 size_t num=10;
 int message_published=0;
 
@@ -60,15 +46,11 @@ time_t T=10;
 bool DestInAttesa=true;
 bool prelevato=false;
 
-ros::Publisher robot;
+//ros::Publisher robot;
 ros::Publisher pub;
 ros::Publisher mitToDest;
 
-//callback usata per vedere la posizione del robot ad ogni istante
-	//mi iscrivo al topic tf e chiamare la position_callback.
-	//Ogni volta che vengono pubblicati messaggi sul topic tf si avvia la position_callback
-    //in modo da avere sempre l' ultima posione del roboto aggiornata
-ros::Subscriber sub_tf;
+
 
 
 struct user{
@@ -99,62 +81,27 @@ std::deque<shipment> codaTrasporti;
 infoDest infoForDest;
 bool ReadUsers()
 {
-		//OSS: bisgona stare nella cartella src per eseguire il server altrimenti non vede il file degli utenti()
-		//DA SISTEMARE
-	 std::ifstream iFile("./utenti.txt");
-	 std::string line;
-	 char *ptr;
-	 user utente;
-	 getline(iFile,line);// elimino la prima riga che è l' intestazione
-	 for(int i=0;i<num_users*5;i++)
-	 {
-		
-		/*getline(iFile, line,' ');
-		utente.username=line;
-		getline(iFile, line,' ');
-		utente.password=line;
-	    getline(iFile,line,' ');
-	    utente.x=stof(line);
-	    getline(iFile,line,' ');
-	    utente.y=stof(line);
-	    getline(iFile,line,' ');
-	    utente.theta=stof(line);
-		ROS_INFO("%s,%s,%f,%f,%f",utente.username.c_str(),utente.password.c_str(),utente.x,utente.y,utente.theta);
-		*/
-		/*getline(iFile,line,' ');
-		ROS_INFO("%s",line.c_str());*/
-		
-	  }
-	  //DA FAR FUNZIONARE STA MERDA DI LETTURA DA FILE(possibile problema con \n a termine riga)
-	  
-	  
-	  iFile.close();
-	  
-	  //ABUSIVO
+	
+	  user utente;
 	  utente.username="user1";
 	  utente.password="user1";
-	  utente.x=53.0;
-	  utente.y=18.0;
+	  utente.x=53.0; //53
+	  utente.y=18.0; //18
 	  utente.theta=0.02;
 	  users.push_back(utente);
 	  utente.username="user2";
 	  utente.password="user2";
-	  utente.x=54.0;
-	  utente.y=20.0;
+	  utente.x=51.5;
+	  utente.y=7.0;
 	  utente.theta=0.02;
 	  users.push_back(utente);
 	  utente.username="user3";
 	  utente.password="user3";
-	  utente.x=15.0;
-	  utente.y=9.0;
-	  utente.theta=1.0;
+	  utente.x=32.5;
+	  utente.y=12.0;
+	  utente.theta=0.02;
 	  users.push_back(utente);
-	  utente.username="user4";
-	  utente.password="user4";
-	  utente.x=10.0;
-	  utente.y=10.0;
-	  utente.theta=1.0;
-	  users.push_back(utente);
+	  //potevo leggere gli utenti da un file(utenti.txt)
 	  return true;
 }
 
@@ -256,136 +203,38 @@ void INFO_CallBack(const pick_and_delivery::InfoComunication::ConstPtr& infoRobo
 {
 	error=infoRobot->status;
 	information=infoRobot->info;
-	if(error==1)//successo ovvero il robot è arrivato, mi fermo
+	if(error!=0)//successo ovvero il robot è arrivato, mi fermo
 		cruising=0;
 }
 ros::Subscriber subInfo; //callback per le informazioni date da set_goal
 
-/**ROBOT VERSO IL CLIENT MITTENTE*/
-bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
+
+
+
+void fine_Spedizione(user mittente,user destinatario)
 {
+	//estraggo dalla coda la spedizione
+	//eseguo il logout degli utenti che hanno fatto la spedizione
 	
-	set_goal::NewGoal set_new_goal_msg;
-	user fromTo=getUser(req.fromToUser);
-	set_new_goal_msg.x=fromTo.x;
-	set_new_goal_msg.y=fromTo.y;
-	set_new_goal_msg.theta=fromTo.theta;
-	cruising=1;
-	pub.publish(set_new_goal_msg);
-	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+	codaTrasporti.pop_front(); //elimino il primo in coda
+	ROS_INFO("user:[%s] ha effettuato il logout.",mittente.username.c_str());
+	ROS_INFO("user:[%s] ha effettuato il logout.",destinatario.username.c_str());
+	std::vector<user> new_usersLogIn;	
+	for (user u:usersLogIn)
+	  {
+		  if(u.username!=mittente.username && u.username!=destinatario.username)
+		  {
+			  new_usersLogIn.push_back(u);
+		  }
+	  }
+	
+	
+	usersLogIn=new_usersLogIn;
+	
+	ROS_INFO("num spedizioni in coda: %d",static_cast<int>(codaTrasporti.size()));
+	ROS_INFO("utenti loggati:%d",static_cast<int>(usersLogIn.size()));
 
-	while(cruising)
-	{
-		//ROS_INFO("SPOSTAMENTO");
-		 ros::spinOnce();
-	}
-	switch(error)
-	{
-		case -1: //robot bloccato o non raggiunto in tempo
-			res.status=-1;
-			res.info=information;
-			break;
-		/*case 2: //goal non raggiunto in tempo
-			res.status=-1;
-			res.info="GOAL NON RAGGIUNTO IN TEMPO";
-			break;*/
-		default:
-			res.status=1;
-			res.info="ROBOT ARRIVATO";
-	}
-	return true;
 }
-
-/**ROBOT VERSO IL CLIENT DESTINATARIO*/
-bool invioRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
-{
-	set_goal::NewGoal set_new_goal_msg;
-	user fromTo=getUser(req.fromToUser);
-	set_new_goal_msg.x=fromTo.x;
-	set_new_goal_msg.y=fromTo.y;
-	set_new_goal_msg.theta=fromTo.theta;
-	cruising=1;
-	pub.publish(set_new_goal_msg);
-	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
-
-	while(cruising)
-	{
-		//ROS_INFO("SPOSTAMENTO");
-		 ros::spinOnce();
-	}
-	
-	//TODO verificare che il destinatario abbia ricevuto e riscontrare al mittente
-	
-	
-	switch(error)
-	{
-		case -1: //robot bloccato o non raggiunto in tempo
-			res.status=-1;
-			res.info=information;
-			break;
-		/*case 2: //goal non raggiunto in tempo
-			res.status=-1;
-			res.info="GOAL NON RAGGIUNTO IN TEMPO";
-			break;*/
-		default:
-			res.status=1;
-			res.info="ROBOT ARRIVATO";
-	}
-	
-	
-	infoForDest.stato=res.status;
-	infoForDest.infostato=res.info;
-	DestInAttesa=false;
-	
-	//attendo che il destinatario controlli e prelevi il pacco
-	while(!prelevato)
-	{
-		continue;
-	}
-	
-	
-	
-	
-	
-	
-	return true;
-}
-
-/**DESTINATARIO IN ATTESA DEL PACCO*/
-bool attesaRobotDestinatario(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
-{
-	prelevato=false;
-	while(DestInAttesa)
-	{
-		continue;
-	}
-	
-	//uscito dal ciclo è arrivato il pacco al destinatario
-	//notifico al destinatario che il pacco è arrivato 
-	res.status=infoForDest.stato;
-	res.info=infoForDest.infostato;
-	
-	
-	return true;
-}
-
-/**DESTINATARIO RICEVE PACCO */
-bool paccoRicevuto(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
-{
-	prelevato=true;
-	
-	//fine spedizione TODO: gestire la coda di spedizione
-	
-	res.status=1;
-	res.info="FINE SPEDIZIONE";
-	
-	return true;
-}
-
-
-
-
-
 
 
 
@@ -397,7 +246,7 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 	pick_and_delivery::InfoComunication comunication;
 	user mit=getUser(req.mittente);
 	user dest=getUser(req.destinatario);
-
+	ros::Rate loop_rate(T);
 	int tempo;
 	set_new_goal_msg.x=mit.x;
 	set_new_goal_msg.y=mit.y;
@@ -410,6 +259,7 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 	{
 		//ROS_INFO("SPOSTAMENTO");
 		 ros::spinOnce();
+		 loop_rate.sleep();
 	}
 	switch(error)
 	{
@@ -421,13 +271,14 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 			comunication.info=information;
 			mitToDest.publish(comunication);
 			ros::spinOnce();
+			fine_Spedizione(getUser(req.mittente),getUser(req.destinatario));
 			return true;
 			break;
 		default:
 			ROS_INFO("robot al mittente");
 			res.status=1;
 			res.info="ROBOT ARRIVATO";
-			comunication.status=1;
+			comunication.status=2;
 			comunication.info="Robot in partenza dal mittente e sta per arrivare...";
 			mitToDest.publish(comunication);
 			ros::spinOnce();
@@ -439,12 +290,14 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 		continue;
 	
 	//mando il robot al destinatario
-	set_new_goal_msg.x=dest.x;
-	set_new_goal_msg.y=dest.y;
-	set_new_goal_msg.theta=dest.theta;
+	set_goal::NewGoal set_new_goal_msg_dest;
+
+	set_new_goal_msg_dest.x=dest.x;
+	set_new_goal_msg_dest.y=dest.y;
+	set_new_goal_msg_dest.theta=dest.theta;
 	cruising=1;
-	pub.publish(set_new_goal_msg);
-	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+	pub.publish(set_new_goal_msg_dest);
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg_dest.x,set_new_goal_msg_dest.y,set_new_goal_msg_dest.theta);
 
 	while(cruising)
 	{
@@ -462,6 +315,7 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 			comunication.info=information;
 			mitToDest.publish(comunication);
 			ros::spinOnce();
+			fine_Spedizione(getUser(req.mittente),getUser(req.destinatario));
 			return true;
 			break;
 		default:
@@ -470,7 +324,7 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 			res.info="ROBOT ARRIVATO";
 	}
 	
-	//publico un messaggio al destinatario che il robot è arrivato
+	//pubblico un messaggio al destinatario che il robot è arrivato
 	comunication.status=1;
 	comunication.info="ROBOT ARRIVATO";
 	mitToDest.publish(comunication);
@@ -481,8 +335,9 @@ bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_
 	while(static_cast<long int> (time(NULL))<tempo+TIMEOUT)
 		continue;
 	
-	
+	ROS_INFO("TERMINATA SPEDIZIONE");
 	//esaurisco la spedizione
+	fine_Spedizione(getUser(req.mittente),getUser(req.destinatario));
 	return true;
 }
 
@@ -515,10 +370,6 @@ int main(int argc, char **argv)
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
   ros::ServiceServer service_ControlSendOrRec=n.advertiseService("ControlSendOrRec",controllo_send_or_rec_login);
   ros::ServiceServer service_ControlRobotReady=n.advertiseService("ControlRobotReady",controllo_robot_occupato); //da testare per bene
-  ros::ServiceServer service_AttesaRobot=n.advertiseService("AttesaRobot",attesaRobot);
-  ros::ServiceServer service_InvioRobot=n.advertiseService("InvioRobot",invioRobot);
-  ros::ServiceServer service_AttesaRobotDestinatario=n.advertiseService("AttesaRobotDestinatario",attesaRobotDestinatario);
-  ros::ServiceServer service_PaccoRicevuto=n.advertiseService("PaccoRicevuto",paccoRicevuto);
   ros::ServiceServer service_SPEDIZIONE=n.advertiseService("SPEDIZIONE",SPEDIZIONEFUNZIONE);
 
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
