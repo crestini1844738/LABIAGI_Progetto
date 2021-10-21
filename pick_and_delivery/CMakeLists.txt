@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_py
   tf2_ros
   tf
+  set_goal
 )
 
 ## System dependencies are found with CMake's conventions
@@ -61,6 +62,7 @@ add_message_files(
 #   Message2.msg
 	Num.msg
 	InfoComunication.msg
+#	NewGoal.msg
  )
 
 ## Generate services in the 'srv' folder
@@ -73,6 +75,8 @@ add_service_files(
   ControlSendOrRec.srv
   ControlRobotReady.srv
   Spedizione.srv
+  SpedizioneRobot.srv
+
  )
 
 ## Generate actions in the 'action' folder
@@ -158,6 +162,10 @@ add_dependencies(pick_and_delivery_server pick_and_delivery_gencpp)
 add_executable(pick_and_delivery_client src/pick_and_delivery_client.cpp)
 target_link_libraries(pick_and_delivery_client ${catkin_LIBRARIES})
 add_dependencies(pick_and_delivery_client pick_and_delivery_gencpp)
+
+#add_executable(pick_and_delivery src/Set_Goal.cpp)
+#target_link_libraries(pick_and_delivery ${catkin_LIBRARIES})
+#add_dependencies(Set_Goal pick_and_delivery_gencpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

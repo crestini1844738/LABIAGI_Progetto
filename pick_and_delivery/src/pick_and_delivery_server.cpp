@@ -3,6 +3,8 @@
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
 #include "pick_and_delivery/Spedizione.h"
+#include "pick_and_delivery/SpedizioneRobot.h"
+
 #include "pick_and_delivery/InfoComunication.h" //due campi: status e info
 												//status 0: ancora in esecuzione
 												//status 1: terminato con successo; info con messaggio di successo
@@ -19,6 +21,8 @@
 #include <tf2_msgs/TFMessage.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include "set_goal/NewGoal.h"
+//#include "pick_and_delivery/NewGoal.h"
 
 
 #include <vector>
@@ -33,15 +37,16 @@
 #include <deque>
 #include <ctime>
 
+#define TIMEOUT 10  //TIMEOUT interazione utente
+
 int num_users=4;
 
-int error=0;
-
+int error=1;
+std::string information;
 
 std::vector<float> target_position(2.0); //nuova posizione mentre mi sposto(ad ogni passo)
 std::vector<float> old_position(2.0);    //vecchia posizione mentre mi sposto(ad ogni passo)
 std::vector<float> current_position(2.0);
-
 
 geometry_msgs::PoseStamped new_goal_msg;
 tf2_ros::Buffer tfBuffer; //buffer per le trasformate
@@ -52,8 +57,12 @@ int message_published=0;
 //se ci stiamo spostando setto a 1 altrimenti 0
 int cruising=0;
 time_t T=10;
+bool DestInAttesa=true;
+bool prelevato=false;
 
 ros::Publisher robot;
+ros::Publisher pub;
+ros::Publisher mitToDest;
 
 //callback usata per vedere la posizione del robot ad ogni istante
 	//mi iscrivo al topic tf e chiamare la position_callback.
@@ -79,8 +88,15 @@ struct shipment{
 	user destinatario;
 };
 
+struct infoDest{
+	int stato;
+	std::string infostato;
+};
+
+
 std::deque<shipment> codaTrasporti;
 
+infoDest infoForDest;
 bool ReadUsers()
 {
 		//OSS: bisgona stare nella cartella src per eseguire il server altrimenti non vede il file degli utenti()
@@ -235,219 +251,246 @@ bool controllo_robot_occupato(pick_and_delivery::ControlRobotReady::Request  &re
 	
 }
 
-//callback che ci dice quale è la posizione del robot in quell istante
-void position_CallBack(const tf2_msgs::TFMessage& tf)
+
+void INFO_CallBack(const pick_and_delivery::InfoComunication::ConstPtr& infoRobot)
 {
-	int transform_ok=tfBuffer.canTransform("map","base_link",ros::Time(0));
-	if(transform_ok!=0)//posso trasformare 
-	{
-		geometry_msgs::TransformStamped transformStamped;
-		transformStamped = tfBuffer.lookupTransform("map","base_link",ros::Time(0));
-		ROS_INFO("trasformata:[x:%f , y:%f]",transformStamped.transform.translation.x,transformStamped.transform.translation.y);
-		//è sufficente controllare le x e le y per vedere se mi sto muovendo
-		//theta non serve. se lo metto ho problemi di gestione di altro genere
-		current_position[0]=transformStamped.transform.translation.x;
-		current_position[1]=transformStamped.transform.translation.y;
-
-	}
+	error=infoRobot->status;
+	information=infoRobot->info;
+	if(error==1)//successo ovvero il robot è arrivato, mi fermo
+		cruising=0;
 }
-
-
-//callback con timer. Prende un messaggio di tipo timer
-//per vedere se effetivamente il robot si sta spostando
-//viene chiamata molto frequentemente
-void check1_CallBack(const ros::TimerEvent& event)
-{
-	//se sono in movimento
-	if(cruising!=0)
-	{
-		ROS_INFO("Controllo se mi sto muovendo...");
-		
-		//prendo la distanza tra la posizione corrente e quella precendete.
-		//se minore di un certo valore significa che mi sono bloccato
-		float distance;
-		distance=sqrt(pow(current_position[0]-old_position[0],2)+pow(current_position[1]-old_position[1],2));
-		if(distance < 0.8)
-		{
-			ROS_INFO("PROBLEMAAA!!!");
-			error=1;
-			//cruising=0;
-		}
-		
-		//per verificare se sono arrivato al goal
-		//controllo tra la posizione corrente e la posizione target
-		//se sono arrivato termino di muovermi(cruising=0)
-		if(sqrt(pow(current_position[0]-target_position[0],2)+pow(current_position[1]-target_position[1],2)) < 1.5)
-		{
-			ROS_INFO("Arrivato al goal");
-			error=0;
-			cruising=0; //non sono più in movimento
-		}
-	}
-}
-
-
-//callback per vedere se è passato troppo tempo per arrivare al goal
-//viene chiamata solo dopo un tot di tempo
-void check2_CallBack(const ros::TimerEvent& event)
-{
-	//se mi sto muovendo
-	if(cruising!=0)
-	{
-		ROS_INFO("Controllo se è passato troppo tempo...");
-		float distance;
-		distance=sqrt(pow(current_position[0]-target_position[0],2)+pow(current_position[1]-target_position[1],2));
-		if(distance> 0.5)
-		{
-			ROS_INFO("TIMEOUT: Goal non raggiunto in tempo");
-			error=2;
-			cruising=0;
-		}
-	}
-}
-
+ros::Subscriber subInfo; //callback per le informazioni date da set_goal
 
 /**ROBOT VERSO IL CLIENT MITTENTE*/
 bool attesaRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
 {
-	//prelevo dalla coda dei trasporti il primo trasporto in coda con mittente e destinatario che corrispondono a Request.mittente e Request.destinatario
-	//shipment trasporto=codaTrasporti.front();
+	
+	set_goal::NewGoal set_new_goal_msg;
 	user fromTo=getUser(req.fromToUser);
-	
-	/**setto la posizione di dove andare  prelevare il pacco*/
-	new_goal_msg.header.seq=num;
-	num++;
-	new_goal_msg.header.stamp=ros::Time::now();
-	new_goal_msg.header.frame_id="map";
-	new_goal_msg.pose.position.x=fromTo.x;
-	new_goal_msg.pose.position.y=fromTo.y;
-	new_goal_msg.pose.position.z=0;
-	new_goal_msg.pose.orientation.x=0;
-	new_goal_msg.pose.orientation.y=0;
-	new_goal_msg.pose.orientation.z=0;
-	new_goal_msg.pose.orientation.w=fromTo.theta;
-	
-	//per fare in modo che la callback viene chiamata solo una volta
-	message_published=1;
-	
-	//mi sto spostando
+	set_new_goal_msg.x=fromTo.x;
+	set_new_goal_msg.y=fromTo.y;
+	set_new_goal_msg.theta=fromTo.theta;
 	cruising=1;
-	
-	
-	//salvare la goal position
-	target_position[0]=new_goal_msg.pose.position.x;
-	target_position[1]=new_goal_msg.pose.position.y;
-	
-	//pubblico la nuova posizione che il robot andrà ad assumere
-	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",new_goal_msg.pose.position.x,new_goal_msg.pose.position.y,new_goal_msg.pose.orientation.w);
-	
-	tf2_ros::TransformListener tfListener(tfBuffer);
-	ros::Rate loop_rate(T);
-	
-	while(true)
+	pub.publish(set_new_goal_msg);
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+
+	while(cruising)
 	{
-		if(message_published!=0)
-		{
-			ROS_INFO("Publishing a new goal position");
-			robot.publish(new_goal_msg);
-			message_published=0;
-		}
-		
-		ros::spinOnce();
-		loop_rate.sleep();
-		
-		if(!cruising)
-			break;
-		
+		//ROS_INFO("SPOSTAMENTO");
+		 ros::spinOnce();
 	}
 	switch(error)
 	{
-		case 1: //robot bloccato
+		case -1: //robot bloccato o non raggiunto in tempo
 			res.status=-1;
-			res.info="ROBOT BLOCCATO";
+			res.info=information;
 			break;
-		case 2: //goal non raggiunto in tempo
+		/*case 2: //goal non raggiunto in tempo
 			res.status=-1;
 			res.info="GOAL NON RAGGIUNTO IN TEMPO";
-			break;
+			break;*/
 		default:
 			res.status=1;
-			res.info="ROBOT ARRIVATO AL MITTENTE";
+			res.info="ROBOT ARRIVATO";
 	}
-	
 	return true;
 }
 
 /**ROBOT VERSO IL CLIENT DESTINATARIO*/
 bool invioRobot(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
 {
-	//prelevo dalla coda dei trasporti il primo trasporto in coda con mittente e destinatario che corrispondono a Request.mittente e Request.destinatario
-	shipment trasporto=codaTrasporti.front();
-	user mittente=trasporto.mittente;
-	user destinatario=trasporto.destinatario;
-	/**setto la posizione di dove andare a portare il pacco*/
-	new_goal_msg.header.seq=num;
-	num++;
-	new_goal_msg.header.stamp=ros::Time::now();
-	new_goal_msg.header.frame_id="map";
-	new_goal_msg.pose.position.x=32;
-	new_goal_msg.pose.position.y=10;
-	new_goal_msg.pose.position.z=0;
-	new_goal_msg.pose.orientation.x=0;
-	new_goal_msg.pose.orientation.y=0;
-	new_goal_msg.pose.orientation.z=0;
-	new_goal_msg.pose.orientation.w=0.02;
-	
-	//per fare in modo che la callback viene chiamata solo una volta
-	message_published=1;
-	
-	//mi sto spostando
+	set_goal::NewGoal set_new_goal_msg;
+	user fromTo=getUser(req.fromToUser);
+	set_new_goal_msg.x=fromTo.x;
+	set_new_goal_msg.y=fromTo.y;
+	set_new_goal_msg.theta=fromTo.theta;
 	cruising=1;
-	
-	
-	//salvare la goal position
-	target_position[0]=new_goal_msg.pose.position.x;
-	target_position[1]=new_goal_msg.pose.position.y;
-	
-	//pubblico la nuova posizione che il robot andrà ad assumere
-	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",new_goal_msg.pose.position.x,new_goal_msg.pose.position.y,new_goal_msg.pose.orientation.w);
-	
-	//tf2_ros::TransformListener tfListener(tfBuffer);
-	ros::Rate loop_rate(T);
-	
-	while(true)
+	pub.publish(set_new_goal_msg);
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+
+	while(cruising)
 	{
-		if(message_published!=0)
-		{
-			ROS_INFO("Publishing a new goal position");
-			robot.publish(new_goal_msg);
-			message_published=0;
-		}
-		
-		ros::spinOnce();
-		loop_rate.sleep();
-		
-		if(!cruising)
-			break;
-		
+		//ROS_INFO("SPOSTAMENTO");
+		 ros::spinOnce();
 	}
+	
+	//TODO verificare che il destinatario abbia ricevuto e riscontrare al mittente
+	
+	
 	switch(error)
 	{
-		case 1: //robot bloccato
+		case -1: //robot bloccato o non raggiunto in tempo
 			res.status=-1;
-			res.info="ROBOT BLOCCATO";
+			res.info=information;
 			break;
-		case 2: //goal non raggiunto in tempo
+		/*case 2: //goal non raggiunto in tempo
 			res.status=-1;
 			res.info="GOAL NON RAGGIUNTO IN TEMPO";
-			break;
+			break;*/
 		default:
 			res.status=1;
-			res.info="ROBOT ARRIVATO AL DESTINATARIO";
+			res.info="ROBOT ARRIVATO";
 	}
+	
+	
+	infoForDest.stato=res.status;
+	infoForDest.infostato=res.info;
+	DestInAttesa=false;
+	
+	//attendo che il destinatario controlli e prelevi il pacco
+	while(!prelevato)
+	{
+		continue;
+	}
+	
+	
+	
+	
+	
 	
 	return true;
 }
+
+/**DESTINATARIO IN ATTESA DEL PACCO*/
+bool attesaRobotDestinatario(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
+{
+	prelevato=false;
+	while(DestInAttesa)
+	{
+		continue;
+	}
+	
+	//uscito dal ciclo è arrivato il pacco al destinatario
+	//notifico al destinatario che il pacco è arrivato 
+	res.status=infoForDest.stato;
+	res.info=infoForDest.infostato;
+	
+	
+	return true;
+}
+
+/**DESTINATARIO RICEVE PACCO */
+bool paccoRicevuto(pick_and_delivery::Spedizione::Request  &req, pick_and_delivery::Spedizione::Response &res)
+{
+	prelevato=true;
+	
+	//fine spedizione TODO: gestire la coda di spedizione
+	
+	res.status=1;
+	res.info="FINE SPEDIZIONE";
+	
+	return true;
+}
+
+
+
+
+
+
+
+
+bool SPEDIZIONEFUNZIONE(pick_and_delivery::SpedizioneRobot::Request  &req, pick_and_delivery::SpedizioneRobot::Response &res)
+{
+	//OSS: nella funzione i res._ sono per il mittente e comunication._ per il destinatario
+	ROS_INFO("AVVIATA UNA NUOVA SPEDIZIONE");
+	set_goal::NewGoal set_new_goal_msg;
+	pick_and_delivery::InfoComunication comunication;
+	user mit=getUser(req.mittente);
+	user dest=getUser(req.destinatario);
+
+	int tempo;
+	set_new_goal_msg.x=mit.x;
+	set_new_goal_msg.y=mit.y;
+	set_new_goal_msg.theta=mit.theta;
+	cruising=1;
+	pub.publish(set_new_goal_msg);
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+
+	while(cruising)
+	{
+		//ROS_INFO("SPOSTAMENTO");
+		 ros::spinOnce();
+	}
+	switch(error)
+	{
+		case -1: //robot bloccato o non raggiunto in tempo
+			ROS_INFO("errore robot verso il mittente...");
+			res.status=-1;
+			res.info=information;
+			comunication.status=-1;
+			comunication.info=information;
+			mitToDest.publish(comunication);
+			ros::spinOnce();
+			return true;
+			break;
+		default:
+			ROS_INFO("robot al mittente");
+			res.status=1;
+			res.info="ROBOT ARRIVATO";
+			comunication.status=1;
+			comunication.info="Robot in partenza dal mittente e sta per arrivare...";
+			mitToDest.publish(comunication);
+			ros::spinOnce();
+	}
+	ROS_INFO("attendo il pacco...");
+	//attendo TIMEOUT secondi che l' utente mittente mette il pacco
+	tempo=static_cast<long int> (time(NULL));
+	while(static_cast<long int> (time(NULL))<tempo+TIMEOUT)
+		continue;
+	
+	//mando il robot al destinatario
+	set_new_goal_msg.x=dest.x;
+	set_new_goal_msg.y=dest.y;
+	set_new_goal_msg.theta=dest.theta;
+	cruising=1;
+	pub.publish(set_new_goal_msg);
+	ROS_INFO("pubblicata una nuova posizione al robot: x:%f y:%f theta:%f",set_new_goal_msg.x,set_new_goal_msg.y,set_new_goal_msg.theta);
+
+	while(cruising)
+	{
+		//ROS_INFO("SPOSTAMENTO");
+		 ros::spinOnce();
+	}
+	
+	switch(error)
+	{
+		case -1: //robot bloccato o non raggiunto in tempo
+			ROS_INFO("errore robot verso il destinatario...");
+			res.status=-1;
+			res.info=information;
+			comunication.status=-1;
+			comunication.info=information;
+			mitToDest.publish(comunication);
+			ros::spinOnce();
+			return true;
+			break;
+		default:
+			ROS_INFO("robot al destinatario");
+			res.status=1;
+			res.info="ROBOT ARRIVATO";
+	}
+	
+	//publico un messaggio al destinatario che il robot è arrivato
+	comunication.status=1;
+	comunication.info="ROBOT ARRIVATO";
+	mitToDest.publish(comunication);
+	ros::spinOnce();
+	//attendo che il destintario prelevi il pacco
+	ROS_INFO("attendo che il destinatario prelevi il pacco...");
+	tempo=static_cast<long int> (time(NULL));
+	while(static_cast<long int> (time(NULL))<tempo+TIMEOUT)
+		continue;
+	
+	
+	//esaurisco la spedizione
+	return true;
+}
+
+
+
+
+
+
 
 int main(int argc, char **argv)
 {
@@ -462,16 +505,11 @@ int main(int argc, char **argv)
   ROS_INFO("Utenti caricati sul server. Presenti %d utenti registrati al servizio",static_cast<int>(users.size()));
   for(user u:users)
 	  ROS_INFO("user: %s",u.username.c_str());
-  //tf2_ros::TransformListener tfListener(tfBuffer);
-
-  robot=n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal",1000);
-  sub_tf=n.subscribe("tf",1000,position_CallBack);
   
-  
-  //settare callback con un certo periodo di tempo
-	ros::Timer timer1=n.createTimer(ros::Duration(0.5),check1_CallBack);
-	ros::Timer timer2=n.createTimer(ros::Duration(50),check2_CallBack);
-	
+  //per pubblicare un messaggio di tipo new goal
+  pub=n.advertise<set_goal::NewGoal>("New_Goal",1000);
+  subInfo=n.subscribe("infoComunication",1000,INFO_CallBack);
+  mitToDest=n.advertise<pick_and_delivery::InfoComunication>("mitToDest",1000);
 	
   //servizio ROS
   ros::ServiceServer service = n.advertiseService("UserLogin", login_utente);
@@ -479,6 +517,9 @@ int main(int argc, char **argv)
   ros::ServiceServer service_ControlRobotReady=n.advertiseService("ControlRobotReady",controllo_robot_occupato); //da testare per bene
   ros::ServiceServer service_AttesaRobot=n.advertiseService("AttesaRobot",attesaRobot);
   ros::ServiceServer service_InvioRobot=n.advertiseService("InvioRobot",invioRobot);
+  ros::ServiceServer service_AttesaRobotDestinatario=n.advertiseService("AttesaRobotDestinatario",attesaRobotDestinatario);
+  ros::ServiceServer service_PaccoRicevuto=n.advertiseService("PaccoRicevuto",paccoRicevuto);
+  ros::ServiceServer service_SPEDIZIONE=n.advertiseService("SPEDIZIONE",SPEDIZIONEFUNZIONE);
 
   ROS_INFO("SERVER READY TO ACCEPT REQUEST");
   

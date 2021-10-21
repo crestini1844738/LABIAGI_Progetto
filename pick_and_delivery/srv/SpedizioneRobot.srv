@@ -1,0 +1,5 @@
+string mittente
+string destinatario
+---
+int64 status
+string info

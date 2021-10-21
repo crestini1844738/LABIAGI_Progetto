@@ -3,7 +3,8 @@
 #include "pick_and_delivery/ControlSendOrRec.h"
 #include "pick_and_delivery/ControlRobotReady.h"
 #include "pick_and_delivery/Spedizione.h"
-//#include "pick_and_delivery/InfoComunication.h"
+#include "pick_and_delivery/InfoComunication.h"
+#include "pick_and_delivery/SpedizioneRobot.h"
 
 
 #include <cstdlib>
@@ -22,8 +23,11 @@ std::string inputString;
 int controllo_timer=0;
 bool arrivato=false;
 int attesa_interazione_utente;
-//int TIMEOUT=10;
 int tempo=0;
+ros::Subscriber sub_info_spedizione;
+
+
+
 void send_or_receive() //scelta se mittente e destinatario e altro utente
 {
 	while(true)
@@ -53,10 +57,7 @@ void send_or_receive() //scelta se mittente e destinatario e altro utente
 
 
 
-void client_destinatario(ros::ServiceClient client,ros::NodeHandle n) //per gestire un client che vuole RICEVERE un pacco
-{
-	ROS_INFO("RICEZIONE PACCO");
-}
+
 
 void ExitFailTimeout(std::string errore)
 {
@@ -72,12 +73,20 @@ void ExitFail(std::string errore)
 		exit(EXIT_FAILURE);	
 }
 
+void ExitSuccess(std::string errore)
+{
+	    //gestire logout e coda spedizioni
+		ROS_INFO("SPEDIZIONE TERMINATA");	
+		exit(EXIT_SUCCESS);	
+}
+
 void check_CallBackUtente(const ros::TimerEvent& event)
 {
 	//se sto aspettando che l' utente metta il pacco o lo prelevi
 	if(attesa_interazione_utente!=0)
 	{
 		attesa_interazione_utente=0;
+		//TODO: Da gestire sul server... fare una servizio sul server per annullare la spedizione
 		ExitFailTimeout("Tempo scaduto per interagire con il robot");
 		
 	}
@@ -85,7 +94,14 @@ void check_CallBackUtente(const ros::TimerEvent& event)
 
 
 
-
+void mitToDest_CallBack(const pick_and_delivery::InfoComunication::ConstPtr& infoRobot)
+{
+	int error=infoRobot->status;
+	std::string information=infoRobot->info;
+	if(error==-1)//successo ovvero il robot è arrivato, mi fermo
+		ExitFail(information);
+	ExitSuccess(information);
+}
 
 
 /**SPEDIZIONE IN USCITA, CLIENT INVIA IL PACCO*/
@@ -93,13 +109,30 @@ void client_mittente(ros::ServiceClient client, ros::NodeHandle n)
 {
 	
 	ROS_INFO("SPEDIZIONE PACCO");
-  /** attendo che il robot arrivi alla mia posizione*/
+	client = n.serviceClient<pick_and_delivery::SpedizioneRobot>("SPEDIZIONE");
+    pick_and_delivery::SpedizioneRobot srvSpedizioneRobot;
+    srvSpedizioneRobot.request.mittente = my_user;
+    srvSpedizioneRobot.request.destinatario = other_user; 
+	 ROS_INFO("Spedizione avviata...");
+	  if (client.call(srvSpedizioneRobot))
+	  {
+			if(srvSpedizioneRobot.response.status==-1)
+				ExitFail(srvSpedizioneRobot.response.info);
+			else
+			    ExitSuccess(srvSpedizioneRobot.response.info);
+		 
+		
+	  }
+	  else
+	  {
+		ExitFail("Failed to call service AttesaRobot");
+	  }
+  /*
   client = n.serviceClient<pick_and_delivery::Spedizione>("AttesaRobot");
   pick_and_delivery::Spedizione srvAttesaRobot;
   srvAttesaRobot.request.fromToUser = my_user; //il robot viene prima da me
-  //srvAttesaRobot.request.destinatario = other_user;
   
-  ROS_INFO("In attesa che il robot arrivi...");
+  ROS_INFO("Spedizione avviata...");
   if (client.call(srvAttesaRobot))
   {
 	    if(srvAttesaRobot.response.status==-1)
@@ -123,32 +156,79 @@ void client_mittente(ros::ServiceClient client, ros::NodeHandle n)
     else
 		break;
   }
-  
-  ROS_INFO("Robot in viaggio verso il destinatario...");
-  //client = n.serviceClient<pick_and_delivery::Spedizione>("InvioRobot");
-  //pick_and_delivery::Spedizione srvInvioRobot;
-   client = n.serviceClient<pick_and_delivery::Spedizione>("AttesaRobot");
-  pick_and_delivery::Spedizione srvAttesaRobot2;
-  srvAttesaRobot2.request.fromToUser = other_user;
-  //srvInvioRobot.request.destinatario = other_user;
-  
-  ROS_INFO("In attesa di conferma...");
-  if (client.call(srvAttesaRobot2))
+   attesa_interazione_utente=0;
+   ROS_INFO("ROBOT VERSO IL DESTINATARIO");
+   client = n.serviceClient<pick_and_delivery::Spedizione>("InvioRobot");
+   pick_and_delivery::Spedizione srvInvioRobot;
+   srvInvioRobot.request.fromToUser = other_user; //il robot va al destinatario
+   ROS_INFO("In attesa di riscontro...");
+   
+   
+   if (client.call(srvInvioRobot))
   {
-	    if(srvAttesaRobot2.response.status==-1)
-			ExitFail(srvAttesaRobot2.response.info);
-	 
-	
+	    if(srvInvioRobot.response.status==-1)
+			ExitFail(srvInvioRobot.response.info);
   }
   else
   {
-	ExitFail("Failed to call service srvInvioRobot");
+	ExitFail("Failed to call service InvioRobot");
   }
-  
+  ROS_INFO("PACCO RICEVUTO.");*/
 }
 
+/**SPEDIZIONE IN INGRESSO, CLIENT RICEVE IL PACCO*/
 
+void client_destinatario(ros::ServiceClient client,ros::NodeHandle n)
+{
+	ROS_INFO("RICEZIONE PACCO");
+	sub_info_spedizione=n.subscribe("mitToDest",1000,mitToDest_CallBack);
 
+	ros::spin();
+	/** attendo che il robot arrivi alla mia posizione*/
+	/*ROS_INFO("In attesa di arrivo del pacco...");
+
+    client = n.serviceClient<pick_and_delivery::Spedizione>("AttesaRobotDestinatario");
+	pick_and_delivery::Spedizione srvAttesaRobotDestinatario;
+	srvAttesaRobotDestinatario.request.fromToUser = other_user; //ricevo da questo utente
+	if (client.call(srvAttesaRobotDestinatario))
+	  {
+			if(srvAttesaRobotDestinatario.response.status==-1)
+				ExitFail(srvAttesaRobotDestinatario.response.info);
+		 
+		
+	  }
+	  else
+	  {
+		ExitFail("Failed to call service AttesaRobot");
+	  }
+  ROS_INFO("ROBOT ARRIVATO");
+  attesa_interazione_utente=1;
+  while(true)
+  {
+    ROS_INFO("Preleva il pacco!! Inserisci 'ok' per continuare ");
+    std::getline(std::cin, c);
+    if(c!="ok")
+      ROS_INFO("comando non riconosciuto");
+    else
+		break;
+  }
+   attesa_interazione_utente=0;
+   //notifico al server che il destinatario ha prelevato il pacco
+   client = n.serviceClient<pick_and_delivery::Spedizione>("PaccoRicevuto");
+	pick_and_delivery::Spedizione srvPaccoRicevuto;
+	srvPaccoRicevuto.request.fromToUser = my_user; //sono l' utente che ha ricevuto
+	if (client.call(srvPaccoRicevuto))
+	  {
+			if(srvPaccoRicevuto.response.status==-1)
+				ExitFail(srvPaccoRicevuto.response.info);
+		 
+		
+	  }
+	  else
+	  {
+		ExitFail("Failed to call service AttesaRobot");
+	  }*/
+}
 
 
 
@@ -157,27 +237,24 @@ void client_mittente(ros::ServiceClient client, ros::NodeHandle n)
 
 int main(int argc, char **argv)
 {
-	if (argc != 3)
+  /** Controllo argomenti passati[user,password]*/
+  if (argc != 3)
   {
     ROS_INFO("[input non valido] user, password ");
     return 1;
   }
+  /**inizializzazione*/
   std::string client_name="pick_and_delivery_client_";
   std::string client_name2=argv[1];
-  
-  /** Controllo argomenti passati[user,password]*/
   ros::init(argc, argv, client_name+client_name2);
-  
-
   ros::NodeHandle n;
-  //server_to_clientMittente = n.subscribe("server_to_clientMittente", 1000, server_to_client_Mittente_Callback);
-  ros::Timer timerUtene=n.createTimer(ros::Duration(50),check_CallBackUtente);
+  
+  /**timer Timeout utente*/
+  ros::Timer timerUtente=n.createTimer(ros::Duration(50),check_CallBackUtente);
   
   /**servizio login*/
   ros::ServiceClient client = n.serviceClient<pick_and_delivery::UserLogin>("UserLogin");
   pick_and_delivery::UserLogin srvUserLogin;
-  
-  //prelevo utente e password da argv e richiedo il login al server
   my_user=argv[1];
   my_pass=argv[2];
   srvUserLogin.request.username = argv[1];
@@ -194,7 +271,6 @@ int main(int argc, char **argv)
 	ROS_ERROR("Failed to call service UserLogin");
 	return 1;
   }
-  
   ROS_INFO("SERVER RESPONSE: LOGIN %s",srvUserLogin.response.login.c_str());
   
   
@@ -205,13 +281,9 @@ int main(int argc, char **argv)
  
   /**controllo che l' altro utente sia loggato*/
   ROS_INFO("In attesa che il mittente/destinatario sia connesso al server...");
-  
-  
   client=n.serviceClient<pick_and_delivery::ControlSendOrRec>("ControlSendOrRec");
   pick_and_delivery::ControlSendOrRec srvControlSendOrRec;
-  
   srvControlSendOrRec.request.username=other_user;
-  
   controllo_timer=1;
   tempo=static_cast<long int> (time(NULL));
   while(static_cast<long int> (time(NULL))<tempo+TIMEOUT)
@@ -261,10 +333,6 @@ int main(int argc, char **argv)
       srvControlRobotReady.request.destinatario=my_user; //destinatario sono io
   }
   
-
-
-
-
   controllo_timer=1;
   tempo=static_cast<long int> (time(NULL));
   while(static_cast<long int> (time(NULL))<tempo+TIMEOUT2)
@@ -290,38 +358,14 @@ int main(int argc, char **argv)
   if(controllo_timer) ExitFailTimeout("tempo di attesa del robot elevato");
   ROS_INFO("OK! Robot pronto per la spedizione");
 
-
-
-
-//TODO
-  /**iniziare l'invio/ricezione*/
-   //start per iniziare la connessione(OSS:il destinatario non deve fare questo start)
-  /* while(true)
-  {
-	ROS_INFO("S to start");
-    std::getline(std::cin, inputString);
-    if(inputString.compare("S") != 0 )
-      ROS_INFO("Scelta non valida(send or rec)");
-    else
-		break;
-  }*/
   
   
-  
-  
-  
-  
-  
-  
-  
+ /**avvio le funzioni specifiche per mittente e destintario*/  
   if(scelta.compare("send")==0)
   
     client_mittente(client,n);
   else
       client_destinatario(client,n);
   
-  
-  
-	  
   return 0;
 }
