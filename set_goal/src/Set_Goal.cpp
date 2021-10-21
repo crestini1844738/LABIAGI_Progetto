@@ -151,7 +151,7 @@ void check2_CallBack(const ros::TimerEvent& event)
 		if(distance> 0.5)
 		{
 			infoSTATUS.status=-1;
-			infoSTATUS.info="TIMEOUT";
+			infoSTATUS.info="TIMEOUT: Troppo tempo";
 			ROS_INFO("TIMEOUT: Goal non raggiunto in tempo");
 		}
 		pubStatusInfo.publish(infoSTATUS);
@@ -188,7 +188,7 @@ int main(int argc,char **argv)
 	
 	//settare callback con un certo periodo di tempo
 	ros::Timer timer1=n.createTimer(ros::Duration(0.5),check1_CallBack);
-	ros::Timer timer2=n.createTimer(ros::Duration(50),check2_CallBack);
+	ros::Timer timer2=n.createTimer(ros::Duration(200),check2_CallBack);
 
 	int count=0;
 	while(ros::ok())
