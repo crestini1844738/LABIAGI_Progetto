@@ -1,6 +1,43 @@
 
-Prima cosa: catkin build su /labiagi_2020_2021-master/workspace/srrg2_labiagi
+PREPARAZIONE PER L'ESECUZIONE DEL PROGETTO
 
-1) Inserito un package in /workspace/srrg2_labiagi/src chiamato pick_and_delivery.
-   Creazione package, modifica CMakeList.txt e  package.xml
-2)inserimento nel package dei messaggi e dei servizi (.msg & .srv). Modifiche su CMakeList.txt e package.xml
+-Inserire i package pick_and_delivery e set_goal in ~/labiagi_2020_2021-master/workspace/srrg2_labiagi/src
+
+-Avviare in un terminale il cuore di ros  roscore
+
+-In un altro terminale andare nella directory ~/labiagi_2020_2021-master/workspace/srrg2_labiagi ed eseguire source devel/setup.bash
+
+-Fare la build del progetto  catkin build
+
+ESECUZIONE
+In tutti i terminali che andrò ad aprire andare(prima di fare qualsiasi altra cosa) nella directory ~/labiagi_2020_2021-master/workspace/srrg2_labiagi ed eseguire source devel/setup.bash.
+
+1)In un terminale:
+    Andare in ~/labiagi_2020_21-master-2/workspaces/srrg2_labiagi/src/srrg2_navigation_2d/config ed eseguire il comando ~/Desktop/labiagi_2020_21-master-2/srrg2_webctl/proc_webctl run_navigation.webctl 
+    Verrà avviata su localhost:9001 la schermata di interazione con i nodi ros che ci interessano.
+    
+2)Su un browser andare a localhost:9001:
+   Da qui sarà possibile avviare avviare i nodi
+   Avviare i nodi in ordine come segue:
+   -roscore
+   -stage
+   -mapserver
+   -rviz (in rviz andare su File/Open ~/labiagi_2020_2021-master/workspace/srrg2_labiagi/config e caricare la configurazione rviz_navigation2d.rviz)
+   -localizer(dopo averlo avviato andare su rviz e impostare la posizione iniziale(2D pose estimate))
+   -planner
+   -follower(static)
+   
+ 3)In un terminale avviare il nodo che gestisce i goal. rosrun set_goal Set_Goal 
+   Verrà cosi avviato il nodo che si occupa di mandare il robot nelle posizioni goal stabilite.
+   
+ 4)In un terminale avviare il server che gestisce il servizio. rosrun pick_and_delivery pick_and_delivery_server 
+
+ 5)Ora è possibile richiedere da parte di un client il servizio di spedizione.
+  Ogni client(in un terminale) che richiede il servizio deve loggarsi con username e password, scegliere se inviare  ricevere un pacco e specificare l' altra entità di comunicazione
+  COMANDO:   rosrun pick_and_delivery pich_and_delivery_client <username> <password> <send/rec> <other_user>
+  
+             (es: 
+                   MITTENTE:   rosrun pick_and_delivery pich_and_delivery_client user1 user1 send user2
+               DESTINATARIO:   rosrun pick_and_delivery pich_and_delivery_client user2 user2 rec user1
+                
+                  
